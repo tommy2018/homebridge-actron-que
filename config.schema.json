@@ -1,0 +1,22 @@
+{
+  "pluginAlias": "ActronQue",
+  "pluginType": "platform",
+  "singular": true,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "refreshToken": {
+        "title": "Refresh Token",
+        "type": "string",
+        "required": true,
+        "default": ""
+      },
+      "serial": {
+        "title": "Serial",
+        "type": "string",
+        "required": true,
+        "default": ""
+      }
+    }
+  }
+}
