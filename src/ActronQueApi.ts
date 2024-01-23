@@ -12,6 +12,7 @@ export type ActronQueZone = {
 }
 
 export type ActronQueSystemInfo = {
+  isOnline: boolean;
   mode: string;
   compressorMode: string;
   compressorSpeed: number;
@@ -90,6 +91,7 @@ export default class ActronQue {
       }));
     
     const info = {
+      isOnline: data?.isOnline,
       zones,
       mode: data?.UserAirconSettings?.Mode,
       fanMode: data?.UserAirconSettings?.FanMode,
@@ -200,6 +202,17 @@ export default class ActronQue {
 
     await this.sendCommandAsync({
       "UserAirconSettings.EnabledZones": zonesEnabled,
+      "type": "set-settings"
+    });
+  }
+
+  public async setZoneEnabledAsync(zoneIndex: number, enabled: boolean) {
+    if (zoneIndex < 0 || zoneIndex > 7) {
+      throw new Error("ZoneIndex must be between 0 and 7");
+    }
+
+    await this.sendCommandAsync({
+      [`UserAirconSettings.EnabledZones[${zoneIndex}]`]: enabled,
       "type": "set-settings"
     });
   }

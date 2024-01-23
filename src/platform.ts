@@ -165,9 +165,10 @@ export class ActronQuePlatform extends EventEmitter implements DynamicPlatformPl
     return zones;
   }
 
-  public async subscribeUpdate() {
+  public subscribeUpdate() {
     let lastUpdate = Date.now();
     let errorCount = 0;
+    let watchDogTimer: NodeJS.Timeout | null = null;
 
     const tryUpdateStates = async () => {
       try {
@@ -179,9 +180,9 @@ export class ActronQuePlatform extends EventEmitter implements DynamicPlatformPl
       } catch {}
     };
 
-    let watchdog = setInterval(tryUpdateStates, 20 * 1000);
-
     const connect = async () => {
+      watchDogTimer && clearTimeout(watchDogTimer);
+      
       const oauthToken = await this.actronQueApi.getOauthToken();
       const signalrConnProps = await this.actronQueApi.negotiateSignalrConnectionAsync();
       const ws = new WebSocket(
@@ -190,6 +191,41 @@ export class ActronQuePlatform extends EventEmitter implements DynamicPlatformPl
             "Authorization": `Bearer ${oauthToken}`
           }
       });
+
+      let resubscribeTimer: NodeJS.Timeout | null = null;
+
+      const watchdogAction = () => {
+        watchDogTimer && clearTimeout(watchDogTimer);
+
+        this.log.warn("No messages received from Actron Que SignalR service in 60 seconds");
+        this.log.warn("Will attempt to reconnect");
+
+        ws.close();
+      };
+
+      const errorAction = () => {
+        if (errorCount++ > 10) {
+          this.log.error("Failed to connect to Actron Que SignalR service after 10 attempts");
+          this.log.error("Will not attempt to reconnect");
+        } else {
+          connect();
+        }
+      };
+
+      const resubscribeAction = () => {
+        if (ws.readyState === WebSocket.OPEN) {
+          this.log.info("Resubscribing to Actron Que SignalR service");
+
+          ws.send(JSON.stringify({
+            command: {
+              mwcSerial: this.serial,
+              type:"subscribe"
+            }
+          }));
+        } else {
+          this.log.warn("Failed to resubscribe to Actron Que SignalR service as the connection is not open");
+        }
+      };
 
       ws.on('open', () => {
         this.log.info("Connected to Actron Que SignalR service");
@@ -202,17 +238,23 @@ export class ActronQuePlatform extends EventEmitter implements DynamicPlatformPl
             type:"subscribe"
           }
         }));
+
+        resubscribeTimer = setInterval(resubscribeAction, 3800 * 1000);
       });
   
       ws.on('message', async (data) => {
+        watchDogTimer && clearTimeout(watchDogTimer);
+
         const decodedData = data.toString();
-        
+
         if (decodedData !== "{}") {
           try {
             const update = JSON.parse(decodedData);
             const airConUpdate = update?.M?.[0]?.update?.status;
 
             if (airConUpdate) {
+              this.log.info("Received update from Actron Que SignalR service");
+
               const airCon = this.actronQueApi.parse(airConUpdate);
 
               this.airCon = this.parseAirCon(airCon);
@@ -226,33 +268,35 @@ export class ActronQuePlatform extends EventEmitter implements DynamicPlatformPl
             this.log.error("Failed to parse message from Actron Que SignalR service", e);
           }
         }
+
+        watchDogTimer = setTimeout(watchdogAction, 60 * 1000);
       });
 
       ws.on('error', (e) => {
+        watchDogTimer && clearTimeout(watchDogTimer);
+        resubscribeTimer && clearInterval(resubscribeTimer);
+
         this.log.error('Error connecting to Actron Que SignalR service', e);
         this.log.warn("Will attempt to reconnect in 30 seconds");
 
-        setTimeout(async () => {
-          errorCount++;
-
-          if (errorCount > 5) {
-            this.log.error("Failed to connect to Actron Que SignalR service after 5 attempts");
-            this.log.error("Will not attempt to reconnect");
-          } else {
-            await connect();
-          }
-        }, 30 * 1000);
+        // reconnect up to 10 times, 60 seconds apart, then give up
+        setTimeout(errorAction, 60 * 1000);
       });
       
       ws.on('close', () => {
+        watchDogTimer && clearTimeout(watchDogTimer);
+        resubscribeTimer && clearInterval(resubscribeTimer);
+
         this.log.warn("Disconnected from Actron Que SignalR service");
         this.log.warn("Will attempt to reconnect in 30 seconds");
 
+        // reconnect in 30 seconds
         setTimeout(connect, 30 * 1000);
       });
     }
 
-    await connect();
+    setInterval(tryUpdateStates, 20 * 1000);
+    connect();
   }
 
   private async updateAccessoryCharacteristics() {

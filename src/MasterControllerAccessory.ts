@@ -65,52 +65,86 @@ export class MasterControllerAccessory {
     this.service.updateCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature, this.getCoolingThresholdTemperature());
     this.service.updateCharacteristic(this.platform.Characteristic.HeatingThresholdTemperature, this.getHeatingThresholdTemperature());
     this.service.updateCharacteristic(this.platform.Characteristic.RotationSpeed, this.getRotationSpeed());
+    this.service.updateCharacteristic(this.platform.Characteristic.CurrentRelativeHumidity, this.getCurrentHumidity());
   }
 
   private async setActive(value: CharacteristicValue) {
     const airConInfo = await this.platform.actronQueApi.getSystemInfoAsync();
+
+    if (airConInfo.isOnline === false) {
+      this.platform.log.error("AirCon is offline");
+      throw new Error("AirCon is offline");
+    }
+
     const airConState = this.platform.parseAirCon(airConInfo);
 
     if (value === this.platform.Characteristic.Active.ACTIVE && !airConState.on) {
       this.platform.log.info("Setting power to on");
       await this.platform.actronQueApi.setIsOnAsync(true);
+      this.airConState.on = true;
     } else if (value === this.platform.Characteristic.Active.INACTIVE && airConState.on) {
       this.platform.log.info("Setting power to off");
       await this.platform.actronQueApi.setIsOnAsync(false);
+      this.airConState.on = false;
     }
+
+    this.service.updateCharacteristic(this.platform.Characteristic.Active, this.getActive());
   }
 
   private async setTargetHeaterCoolerState(value: CharacteristicValue) {
+    const airConInfo = await this.platform.actronQueApi.getSystemInfoAsync();
+
+    if (airConInfo.isOnline === false) {
+      this.platform.log.error("AirCon is offline");
+      throw new Error("AirCon is offline");
+    }
+
     if (value === this.platform.Characteristic.TargetHeaterCoolerState.COOL) {
-      await this.platform.actronQueApi.setModeAsync("COOL");
       this.platform.log.info("Setting mode to COOL");
+      await this.platform.actronQueApi.setModeAsync("COOL");
+      this.airConState.operationMode = "COOL";
     } else if (value === this.platform.Characteristic.TargetHeaterCoolerState.HEAT) {
-      await this.platform.actronQueApi.setModeAsync("HEAT");
       this.platform.log.info("Setting mode to HEAT");
+      await this.platform.actronQueApi.setModeAsync("HEAT");
+      this.airConState.operationMode = "HEAT";
     } else if (value === this.platform.Characteristic.TargetHeaterCoolerState.AUTO) {
       this.platform.log.error("AUTO mode is not supported");
       throw new Error("AUTO mode is not supported");
     }
+
+    this.service.updateCharacteristic(this.platform.Characteristic.TargetHeaterCoolerState, this.getTargetHeaterCoolerState());
   }
 
   private async setRotationSpeed(value: CharacteristicValue) {
     const airConInfo = await this.platform.actronQueApi.getSystemInfoAsync();
+
+    if (airConInfo.isOnline === false) {
+      this.platform.log.error("AirCon is offline");
+      throw new Error("AirCon is offline");
+    }
+
     const airConState = this.platform.parseAirCon(airConInfo);
     const isCoolMode = (airConState.operationMode === "COOL");
 
     if (value as number <= 30) {
-      await this.platform.actronQueApi.setFanModeAsync(isCoolMode ? "LOW+CONT" : "LOW");
       this.platform.log.info(`Setting fan mode to LOW. Input value:  ${value}`);
+      await this.platform.actronQueApi.setFanModeAsync(isCoolMode ? "LOW+CONT" : "LOW");
+      this.airConState.fanMode = isCoolMode ? "LOW+CONT" : "LOW";
     } else if (value as number <= 60) {
-      await this.platform.actronQueApi.setFanModeAsync(isCoolMode ? "MED+CONT" : "MED");
       this.platform.log.info(`Setting fan mode to MED. Input value:  ${value}`);
+      await this.platform.actronQueApi.setFanModeAsync(isCoolMode ? "MED+CONT" : "MED");
+      this.airConState.fanMode = isCoolMode ? "MED+CONT" : "MED";
     } else if (value as number <= 90) {
-      await this.platform.actronQueApi.setFanModeAsync(isCoolMode ? "HIGH+CONT" : "HIGH");
       this.platform.log.info(`Setting fan mode to HIGH. Input value:  ${value}`);
+      await this.platform.actronQueApi.setFanModeAsync(isCoolMode ? "HIGH+CONT" : "HIGH");
+      this.airConState.fanMode = isCoolMode ? "HIGH+CONT" : "HIGH";
     } else if (value as number <= 100) {
-      await this.platform.actronQueApi.setFanModeAsync(isCoolMode ? "AUTO+CONT" : "AUTO");
       this.platform.log.info(`Setting fan mode to AUTO. Input value:  ${value}`);
+      await this.platform.actronQueApi.setFanModeAsync(isCoolMode ? "AUTO+CONT" : "AUTO");
+      this.airConState.fanMode = isCoolMode ? "AUTO+CONT" : "AUTO";
     }
+
+    this.service.updateCharacteristic(this.platform.Characteristic.RotationSpeed, this.getRotationSpeed());
   }
 
   private async setCoolingThresholdTemperature(value: CharacteristicValue) {
@@ -120,6 +154,12 @@ export class MasterControllerAccessory {
     }
 
     const airConInfo = await this.platform.actronQueApi.getSystemInfoAsync();
+
+    if (airConInfo.isOnline === false) {
+      this.platform.log.error("AirCon is offline");
+      throw new Error("AirCon is offline");
+    }
+
     const airConState = this.platform.parseAirCon(airConInfo);
 
     if ((value as number) < airConState.limit.minCool || (value as number) > airConState.limit.maxCool) {
@@ -129,6 +169,9 @@ export class MasterControllerAccessory {
 
     this.platform.log.info(`Setting cooling setpoint to ${value}`);
     await this.platform.actronQueApi.setCoolSetpointAsync(value as number);
+
+    this.airConState.coolSetpoint = value as number;
+    this.service.updateCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature, this.getCoolingThresholdTemperature());
   }
 
   private async setHeatingThresholdTemperature(value: CharacteristicValue) {
@@ -138,6 +181,12 @@ export class MasterControllerAccessory {
     }
 
     const airConInfo = await this.platform.actronQueApi.getSystemInfoAsync();
+
+    if (airConInfo.isOnline === false) {
+      this.platform.log.error("AirCon is offline");
+      throw new Error("AirCon is offline");
+    }
+
     const airConState = this.platform.parseAirCon(airConInfo);
     
     if ((value as number) < airConState.limit.minHeat || (value as number) > airConState.limit.maxHeat) {
@@ -147,6 +196,9 @@ export class MasterControllerAccessory {
 
     this.platform.log.info(`Setting heating setpoint to ${value}`);
     await this.platform.actronQueApi.setHeatSetpointAsync(value as number);
+
+    this.airConState.coolSetpoint = value as number;
+    this.service.updateCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature, this.getCoolingThresholdTemperature());
   }
 
   private getRotationSpeed(): CharacteristicValue {

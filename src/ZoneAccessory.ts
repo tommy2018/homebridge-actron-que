@@ -38,9 +38,6 @@ export class ZoneAccessory {
     this.service.getCharacteristic(this.platform.Characteristic.CurrentTemperature)
       .onGet(this.getCurrentTemperature.bind(this));
 
-    this.service.getCharacteristic(this.platform.Characteristic.CurrentRelativeHumidity)
-      .onGet(this.getCurrentHumidity.bind(this));
-
     this.platform.on("deviceStateUpdated", () => this.updateDeviceCharacteristics());
   }
 
@@ -54,23 +51,27 @@ export class ZoneAccessory {
     this.service.updateCharacteristic(this.platform.Characteristic.TargetHeatingCoolingState, this.getTargetHeatingCoolingState());
     this.service.updateCharacteristic(this.platform.Characteristic.CurrentTemperature, this.getCurrentTemperature());
     this.service.updateCharacteristic(this.platform.Characteristic.TargetTemperature, this.getTargetTemperature());
-    this.service.updateCharacteristic(this.platform.Characteristic.CurrentRelativeHumidity, this.getCurrentHumidity());
   }
 
   private async setTargetHeatingCoolingState(value: CharacteristicValue) {
     const airConInfo = await this.platform.actronQueApi.getSystemInfoAsync();
+
+    if (airConInfo.isOnline === false) {
+      this.platform.log.error("AirCon is offline");
+      throw new Error("AirCon is offline");
+    }
+
     const airConState = this.platform.parseAirCon(airConInfo);
     const zonesState = this.platform.parseZones(airConInfo.zones);
-    const zonesEnabled = [false, false, false, false, false, false, false, false];
 
-    for (const zone of Object.values(zonesState)) {
-      zonesEnabled[zone.zoneIndex] = zone.on;
-    }
 
     if (value == this.platform.Characteristic.TargetHeatingCoolingState.OFF) {
       this.platform.log.info("Turning off zone", zonesState[this.zoneIndex].name);
-      zonesEnabled[this.zoneIndex] = false;
-      await this.platform.actronQueApi.setZonesEnabledAsync(zonesEnabled);
+      await this.platform.actronQueApi.setZoneEnabledAsync(this.zoneIndex, false);
+
+      // update cached state
+      this.zoneState.on = false;
+      this.service.updateCharacteristic(this.platform.Characteristic.CurrentHeatingCoolingState, this.getCurrentHeatingCoolingState());
     } else if (value == this.platform.Characteristic.TargetHeatingCoolingState.HEAT) {
       if (airConState.operationMode === "COOL") {
         this.platform.log.error("Setting zone to heat mode when master is in cool mode is not allowed");
@@ -78,8 +79,11 @@ export class ZoneAccessory {
       }
 
       this.platform.log.info("Turning on zone", zonesState[this.zoneIndex].name);
-      zonesEnabled[this.zoneIndex] = true;
-      await this.platform.actronQueApi.setZonesEnabledAsync(zonesEnabled);
+      await this.platform.actronQueApi.setZoneEnabledAsync(this.zoneIndex, true);
+      
+      // update cached state
+      this.zoneState.on = true;
+      this.service.updateCharacteristic(this.platform.Characteristic.CurrentHeatingCoolingState, this.getCurrentHeatingCoolingState());
     } else if (value == this.platform.Characteristic.TargetHeatingCoolingState.COOL) {
       if (airConState.operationMode === "HEAT") {
         this.platform.log.error("Setting zone to cool mode when master is in heat mode is not allowed");
@@ -87,8 +91,11 @@ export class ZoneAccessory {
       }
 
       this.platform.log.info("Turning on zone", zonesState[this.zoneIndex].name);
-      zonesEnabled[this.zoneIndex] = true;
-      await this.platform.actronQueApi.setZonesEnabledAsync(zonesEnabled);
+      await this.platform.actronQueApi.setZoneEnabledAsync(this.zoneIndex, true);
+
+      // update cached state
+      this.zoneState.on = true;
+      this.service.updateCharacteristic(this.platform.Characteristic.CurrentHeatingCoolingState, this.getCurrentHeatingCoolingState());
     } else {
       this.platform.log.error("Unsupported value", value);
       throw new Error("Unsupported value");
@@ -102,6 +109,12 @@ export class ZoneAccessory {
     }
 
     const airConInfo = await this.platform.actronQueApi.getSystemInfoAsync();
+
+    if (airConInfo.isOnline === false) {
+      this.platform.log.error("AirCon is offline");
+      throw new Error("AirCon is offline");
+    }
+
     const airConState = this.platform.parseAirCon(airConInfo);
 
     if (airConState.operationMode === "COOL") {
@@ -125,6 +138,10 @@ export class ZoneAccessory {
       }
 
       await this.platform.actronQueApi.setZoneCoolSetpointAsync(this.zoneIndex, value as number);
+
+      // update cached state
+      this.zoneState.targetTemperature = value as number;
+      this.service.updateCharacteristic(this.platform.Characteristic.TargetTemperature, this.getTargetTemperature());
     } else if (airConState.operationMode === "HEAT") {
       this.platform.log.info("Setting zone heat setpoint to", value);
 
@@ -146,6 +163,10 @@ export class ZoneAccessory {
       }
 
       await this.platform.actronQueApi.setZoneHeatSetpointAsync(this.zoneIndex, value as number);
+
+      // update cached state
+      this.zoneState.targetTemperature = value as number;
+      this.service.updateCharacteristic(this.platform.Characteristic.TargetTemperature, this.getTargetTemperature());
     } else {
       this.platform.log.error("Not implemented");
       throw new Error("Not implemented");
@@ -158,10 +179,6 @@ export class ZoneAccessory {
 
   private getCurrentTemperature(): CharacteristicValue  {
     return this.zoneState.currentTemperature;
-  }
-
-  private getCurrentHumidity(): CharacteristicValue  {
-    return this.zoneState.humidity;
   }
 
   private getTargetHeatingCoolingState(): CharacteristicValue  {
