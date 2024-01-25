@@ -17,7 +17,7 @@ export type ActronQueSystemInfo = {
   compressorMode: string;
   compressorSpeed: number;
   fanMode: string;
-  quietMode: string; 
+  quietMode: boolean;
   coolSetpoint: number;
   heatSetpoint: number;
   on: boolean;
@@ -184,6 +184,13 @@ export default class ActronQue {
   public async setModeAsync(mode: Mode) {
     await this.sendCommandAsync({
       "UserAirconSettings.Mode": mode,
+      "type": "set-settings"
+    });
+  }
+
+  public async setQuietModeAsync(on: boolean) {
+    await this.sendCommandAsync({
+      "UserAirconSettings.QuietMode": on,
       "type": "set-settings"
     });
   }

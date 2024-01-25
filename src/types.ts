@@ -22,6 +22,8 @@ export type AirConState = {
   masterSensorId: string;
   compressorSpeed: number;
   name: string;
+  constantFan: boolean;
+  quietMode: boolean;
   limit: {
     minCool: number;
     maxCool: number;

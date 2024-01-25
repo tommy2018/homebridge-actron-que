@@ -124,24 +124,23 @@ export class MasterControllerAccessory {
     }
 
     const airConState = this.platform.parseAirCon(airConInfo);
-    const isCoolMode = (airConState.operationMode === "COOL");
 
     if (value as number <= 30) {
       this.platform.log.info(`Setting fan mode to LOW. Input value:  ${value}`);
-      await this.platform.actronQueApi.setFanModeAsync(isCoolMode ? "LOW+CONT" : "LOW");
-      this.airConState.fanMode = isCoolMode ? "LOW+CONT" : "LOW";
+      await this.platform.actronQueApi.setFanModeAsync(airConState.constantFan ? "LOW+CONT" : "LOW");
+      this.airConState.fanMode = "LOW";
     } else if (value as number <= 60) {
       this.platform.log.info(`Setting fan mode to MED. Input value:  ${value}`);
-      await this.platform.actronQueApi.setFanModeAsync(isCoolMode ? "MED+CONT" : "MED");
-      this.airConState.fanMode = isCoolMode ? "MED+CONT" : "MED";
+      await this.platform.actronQueApi.setFanModeAsync(airConState.constantFan ? "MED+CONT" : "MED");
+      this.airConState.fanMode = "MED";
     } else if (value as number <= 90) {
       this.platform.log.info(`Setting fan mode to HIGH. Input value:  ${value}`);
-      await this.platform.actronQueApi.setFanModeAsync(isCoolMode ? "HIGH+CONT" : "HIGH");
-      this.airConState.fanMode = isCoolMode ? "HIGH+CONT" : "HIGH";
+      await this.platform.actronQueApi.setFanModeAsync(airConState.constantFan ? "HIGH+CONT" : "HIGH");
+      this.airConState.fanMode = "HIGH";
     } else if (value as number <= 100) {
       this.platform.log.info(`Setting fan mode to AUTO. Input value:  ${value}`);
-      await this.platform.actronQueApi.setFanModeAsync(isCoolMode ? "AUTO+CONT" : "AUTO");
-      this.airConState.fanMode = isCoolMode ? "AUTO+CONT" : "AUTO";
+      await this.platform.actronQueApi.setFanModeAsync(airConState.constantFan ? "AUTO+CONT" : "AUTO");
+      this.airConState.fanMode = "AUTO";
     }
 
     this.service.updateCharacteristic(this.platform.Characteristic.RotationSpeed, this.getRotationSpeed());

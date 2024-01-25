@@ -6,6 +6,8 @@ import { ZoneAccessory } from './ZoneAccessory';
 import { AirConState, ZoneState } from './types';
 import ActronQueApi, { ActronQueSystemInfo, ActronQueZone } from './ActronQueApi';
 import EventEmitter from 'events';
+import { ConstantFanAccessory } from './ConstantFanAccessory';
+import { QuietModeAccessory } from './QuietModeAccessory';
 
 export class ActronQuePlatform extends EventEmitter implements DynamicPlatformPlugin  {
   public readonly Service: typeof Service = this.api.hap.Service;
@@ -51,6 +53,7 @@ export class ActronQuePlatform extends EventEmitter implements DynamicPlatformPl
 
   private async discoverDevices() {
     try {
+      this.log.info("Fetching aircon info on startup");
       await this.fetchAirConInfo();
     } catch (e) {
       this.log.error("Failed to configure accessory", e);
@@ -58,28 +61,86 @@ export class ActronQuePlatform extends EventEmitter implements DynamicPlatformPl
     }
 
     // master controller
-    const uuid = this.api.hap.uuid.generate("Master Controller");
-    const existingAccessory = this.accessories.find(accessory => accessory.UUID === uuid);
+    const registerMasterController = () => {
+      const uuid = this.api.hap.uuid.generate("Master Controller");
+      const existingAccessory = this.accessories.find(accessory => accessory.UUID === uuid);
+  
+      if (existingAccessory) {
+        this.log.info('Restoring existing master controller accessory from cache:', existingAccessory.displayName);
+  
+        new MasterControllerAccessory(this, existingAccessory);
+      } else {
+        this.log.info('Adding new accessory:', "Master Controller");
+  
+        const accessory = new this.api.platformAccessory("Master Controller", uuid);
+  
+        accessory.context.device = {
+          type: "MasterController",
+          id: "Master Controller",
+          displayName: this.airCon!.name,
+        };
+  
+        new MasterControllerAccessory(this, accessory);
+  
+        this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
+      }
+    };
+   
+    // constant fan
+    const registerConstantFan = () => {
+      const uuid = this.api.hap.uuid.generate("Constant Fan");
+      const existingAccessory = this.accessories.find(accessory => accessory.UUID === uuid);
+  
+      if (existingAccessory) {
+        this.log.info('Restoring existing constant fan accessory from cache:', existingAccessory.displayName);
+  
+        new ConstantFanAccessory(this, existingAccessory);
+      } else {
+        this.log.info('Adding new accessory:', "Constant Fan");
+  
+        const accessory = new this.api.platformAccessory("Constant Fan", uuid);
+  
+        accessory.context.device = {
+          type: "ConstantFan",
+          id: "Constant Fan",
+          displayName: "Constant Fan",
+        };
+  
+        new ConstantFanAccessory(this, accessory);
+  
+        this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
+      }
+    };
 
-    if (existingAccessory) {
-      this.log.info('Restoring existing master controller accessory from cache:', existingAccessory.displayName);
+    // quiet mode
+    const registerQuietMode = () => {
+      const uuid = this.api.hap.uuid.generate("Quiet Mode");
+      const existingAccessory = this.accessories.find(accessory => accessory.UUID === uuid);
+  
+      if (existingAccessory) {
+        this.log.info('Restoring existing quiet mode accessory from cache:', existingAccessory.displayName);
+  
+        new QuietModeAccessory(this, existingAccessory);
+      } else {
+        this.log.info('Adding new accessory:', "Quiet Mode");
+  
+        const accessory = new this.api.platformAccessory("Quiet Mode", uuid);
+  
+        accessory.context.device = {
+          type: "QuietMode",
+          id: "Quiet Mode",
+          displayName: "Quiet Mode",
+        };
+  
+        new QuietModeAccessory(this, accessory);
+  
+        this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
+      }
+    };
 
-      new MasterControllerAccessory(this, existingAccessory);
-    } else {
-      this.log.info('Adding new accessory:', "Master Controller");
-
-      const accessory = new this.api.platformAccessory("Master Controller", uuid);
-
-      accessory.context.device = {
-        type: "MasterController",
-        id: "Master Controller",
-        displayName: this.airCon!.name,
-      };
-
-      new MasterControllerAccessory(this, accessory);
-
-      this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
-    }
+    registerMasterController();
+    registerConstantFan();
+    registerQuietMode();
 
     // zones
     for (const zoneIndex in this.zones) {
@@ -121,7 +182,7 @@ export class ActronQuePlatform extends EventEmitter implements DynamicPlatformPl
     return {
       serialNumber: this.serial,
       operationMode: airConInfo.mode,
-      fanMode: airConInfo.fanMode,
+      fanMode: airConInfo.fanMode.replace("+CONT", ""),
       temperature: airConInfo.temperature,
       humidity: airConInfo.humidity,
       coolSetpoint: airConInfo.coolSetpoint,
@@ -132,6 +193,8 @@ export class ActronQuePlatform extends EventEmitter implements DynamicPlatformPl
       masterSensorId: airConInfo.masterSensorId,
       compressorSpeed: airConInfo.compressorSpeed,
       name: airConInfo.name,
+      constantFan: airConInfo.fanMode.endsWith("+CONT"),
+      quietMode: airConInfo.quietMode,
       limit: {
         minCool: airConInfo.limit.minCool,
         maxCool: airConInfo.limit.maxCool,
