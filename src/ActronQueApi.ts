@@ -78,7 +78,7 @@ export default class ActronQue {
         ...z,
         index: i,
       }))
-      ?.filter(z => z?.CanOperate === true)
+      ?.filter(z => z?.NV_Exists === true)
       ?.map(z => ({
         on: data?.UserAirconSettings?.EnabledZones?.[z?.index],
         name: z?.NV_Title,
